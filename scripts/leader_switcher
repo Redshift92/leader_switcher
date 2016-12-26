@@ -13,10 +13,12 @@ from std_msgs.msg import String
 
 rospy.init_node('leader_switcher', anonymous=True)
 pub = rospy.Publisher('plan2rviz_notifier', String, queue_size=10)
-map_path = os.path.join(rospkg.RosPack().get_path('leader_switcher'), 'maps', 'map_3_light.png')
+# map_path = os.path.join(rospkg.RosPack().get_path('leader_switcher'), 'maps', 'map_4.png')
+map_path = os.path.join(rospkg.RosPack().get_path('leader_switcher'), 'maps', 'map_9.png')
+# map_path = os.path.join(rospkg.RosPack().get_path('leader_switcher'), 'maps', 'map_3_light.png')
 # map_path = os.path.join(rospkg.RosPack().get_path('leader_switcher'), 'maps', 'map_fake_2.png')
 map_i = Image.open(map_path)
-rate = rospy.Rate(2) # 1hz
+rate = rospy.Rate(4)
 
 black = (0,0,0,255)
 red = (255,0,0,255)
@@ -102,7 +104,8 @@ for x in range(map_i.size[0]):
         else:
             free_space.append((x,y))
 
-pub.publish(json.dumps(players))
+for _ in range(10):
+    pub.publish(json.dumps(players))
 
 sort_start_goal()
 print(start_positions)
@@ -138,14 +141,17 @@ for edge in edges:
     players['edges'][0][1].append(edge[1][1])
 pub.publish(json.dumps(players))
 
-solver.run()
+solver.run(2, 2, 10)
 print('run done')
 states = solver.get_states_sequence()
-print(states)
+print('got states: ',len(states))
 
 players = { 'agents': None }
 
-while not rospy.is_shutdown():
-    players['agents'] = states.pop()[0:-1]
+while not rospy.is_shutdown() and len(states) != 0:
+    new_state = states.pop()
+    ldr = new_state[new_state[-1]]
+    new_state[new_state[-1]]= (ldr[0], ldr[1], {'rgb': [0,0,255]})
+    players['agents'] = new_state[0:-1]
     pub.publish(json.dumps(players))
     rate.sleep()

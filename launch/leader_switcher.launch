@@ -1,0 +1,18 @@
+<?xml version="1.0" ?>
+<launch>
+
+    <include file="$(find plan2rviz)/launch/plan2rviz.launch"/>
+
+	<arg name="map" default="5"/>
+
+    <!-- leader transfer cost -->
+    <arg name="ltc" default="2"/>
+    <!-- inadmissible heuristics weight -->
+    <arg name="wa" default="2"/>
+    <!-- heuristic weight (almost agents num) -->
+    <arg name="wh" default="7"/>
+
+	<node name="leader_switcher" pkg="leader_switcher" type="leader_switcher"
+          args="$(arg map) $(arg ltc) $(arg wa) $(arg wh)" output="screen"/>
+
+</launch>

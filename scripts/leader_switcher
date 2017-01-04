@@ -4,33 +4,28 @@ import rospy
 import rospkg
 import os
 import json
+import sys
 from PIL import Image
+from time import sleep
 
 # from leader_switcher import solver
 import leader_switcher.solver as solver
 
 from std_msgs.msg import String
 
+map_file = 'map_' + sys.argv[1] + '.png'
+
 rospy.init_node('leader_switcher', anonymous=True)
 pub = rospy.Publisher('plan2rviz_notifier', String, queue_size=10)
-# map_path = os.path.join(rospkg.RosPack().get_path('leader_switcher'), 'maps', 'map_4.png')
-map_path = os.path.join(rospkg.RosPack().get_path('leader_switcher'), 'maps', 'map_9.png')
-# map_path = os.path.join(rospkg.RosPack().get_path('leader_switcher'), 'maps', 'map_3_light.png')
-# map_path = os.path.join(rospkg.RosPack().get_path('leader_switcher'), 'maps', 'map_fake_2.png')
+map_path = os.path.join(rospkg.RosPack().get_path('leader_switcher'), 'maps', map_file)
 map_i = Image.open(map_path)
 rate = rospy.Rate(4)
 
-black = (0,0,0,255)
-red = (255,0,0,255)
-green = (0,255,0,255)
-blue = (0,0,255,255)
-white = (255,255,255,255)
-
-# black = (0,0,0)
-# red = (255,0,0)
-# green = (0,255,0)
-# blue = (0,0,255)
-# white = (255,255,255)
+black = (0,0,0)
+red = (255,0,0)
+green = (0,255,0)
+blue = (0,0,255)
+white = (255,255,255)
 
 
 obstacles_edges = []
@@ -69,7 +64,7 @@ def sort_start_goal():
 def is_edge(x,y):
     white_ng = 0
     for xx in [(-1,0),(1,0),(0,1),(0,-1)]:
-        if map_i.getpixel((x+xx[0],y+xx[1])) == white:
+        if map_i.getpixel((x+xx[0],y+xx[1]))[0:3] == white:
             white_ng += 1
     if white_ng > 1:
         return (True, True)
@@ -80,7 +75,7 @@ def is_edge(x,y):
 players = { 'obstacles': [], 'agents': [] }
 for x in range(map_i.size[0]):
     for y in range(map_i.size[1]):
-        pix = map_i.getpixel((x, map_i.size[1] - y - 1))
+        pix = map_i.getpixel((x, map_i.size[1] - y - 1))[0:3]
         if pix == black:
             edge_corner = is_edge(x, map_i.size[1] - y - 1)
             if edge_corner[0]:
@@ -104,33 +99,13 @@ for x in range(map_i.size[0]):
         else:
             free_space.append((x,y))
 
-for _ in range(10):
-    pub.publish(json.dumps(players))
+sleep(1)
+pub.publish(json.dumps(players))
 
 sort_start_goal()
-print(start_positions)
-print(goal_positions)
 
-import time
-
-s = time.time()
-# graph_data = {}
-# graph_data['free_space'] = free_space
-# graph_data['obstacles'] = [obstacles_corners, obstacles_edges, obstacles, obstacles_corners + obstacles_edges]
-# graph_data['start_positions'] = start_positions
-# graph_data['leaders'] = leaders
-# graph_data['goal_positions'] = goal_positions
-# graph_data['size'] = map_i.size
-# with open('ww.json','w+') as ww:
-#     ww.write(json.dumps(graph_data))
-#
-# import sys
-# sys.exit(1)
-
-print(leaders)
 solver.init_graph(free_space, [obstacles_corners, obstacles_edges, obstacles, obstacles_corners + obstacles_edges],
                     start_positions, leaders, goal_positions, map_i.size)
-print(time.time() - s)
 
 edges = solver.get_graph_edges()
 players['edges'] = [ [[],[]] ]
@@ -141,7 +116,10 @@ for edge in edges:
     players['edges'][0][1].append(edge[1][1])
 pub.publish(json.dumps(players))
 
-solver.run(2, 2, 10)
+solver_params = [ float(param) for param in sys.argv[2:5] ]
+print(solver_params)
+
+solver.run(*solver_params)
 print('run done')
 states = solver.get_states_sequence()
 print('got states: ',len(states))

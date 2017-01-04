@@ -367,8 +367,7 @@ long heuristic(int hidx, state_t state) {
     }
 }
 
-float wh = 60;
-float wa = 1.5;
+float wa, wh;
 
 long min_key(int i, std::vector<state_queue_t>* open) {
     return  ((state_cost_t) open->at(i).top()).second;
@@ -419,7 +418,7 @@ std::pair<long, int> get_g_i_cost_pos(state_t state, std::vector<state_cost_t> g
     return std::make_pair(g_i_cost, pos);
 }
 
-int leader_transfer_cost;
+float leader_transfer_cost;
 
 long edge_cost(state_t src, state_t dst) {
     long cost = 0;
@@ -450,26 +449,28 @@ long edge_cost(state_t src, state_t dst) {
     }
     f_err = (long) sqrt(f_err);
 
-    std::cout << "f_err: " << f_err << "\n";
-
-    if (f_err == 0) {
-        std::cout << "error zero for: \n";
-        for (i = 0; i < dst.size()-1; i++) {
-            std::cout << "state " << i << ": " << slv_graph[dst[i]].coord << " ref: " << slv_graph[start_state[i]].coord << "\n";
-            if (i>0) {
-                dst_rel_coord = coord_diff(slv_graph[dst[i]].coord, slv_graph[dst[i-1]].coord);
-                dst_f_err = coord_diff(dst_rel_coord, formation_conf[i-1]);
-                std::cout << "dst rel: " << dst_rel_coord;
-                std::cout << " f err: " << dst_f_err << "\n";
-            }
-        }
-    }
+    // std::cout << "f_err: " << f_err << "\n";
+    //
+    // if (f_err == 0) {
+    //     std::cout << "error zero for: \n";
+    //     for (i = 0; i < dst.size()-1; i++) {
+    //         std::cout << "state " << i << ": " << slv_graph[dst[i]].coord << " ref: " << slv_graph[start_state[i]].coord << "\n";
+    //         if (i>0) {
+    //             dst_rel_coord = coord_diff(slv_graph[dst[i]].coord, slv_graph[dst[i-1]].coord);
+    //             dst_f_err = coord_diff(dst_rel_coord, formation_conf[i-1]);
+    //             std::cout << "dst rel: " << dst_rel_coord;
+    //             std::cout << " f err: " << dst_f_err << "\n";
+    //         }
+    //     }
+    // }
 
     return cost + 2*f_err;
 }
 
 float goal_err_th = 10.0;
 state_t satisfying_goal;
+
+float last_error = INF;
 
 bool satisfies_goal(state_t state) {
     float error = 0;
@@ -479,7 +480,10 @@ bool satisfies_goal(state_t state) {
         coord_t crd_e = coord_diff(slv_graph[state[i]].coord, slv_graph[goal_state[i]].coord);
         error += sqrt(crd_e.first*crd_e.first + crd_e.second*crd_e.second);
     }
-    printf("error %f\n", error);
+    if (error < last_error - 20) {
+        std::cout << "error " << error << "\n";
+        last_error = error;
+    }
     return (error < goal_err_th);
 }
 
@@ -571,7 +575,7 @@ void expand(int i, state_t state, std::vector<state_queue_t>* open, std::vector<
 }
 
 
-void run(int ltc, float wa_, float wh_) {
+void run(float ltc, float wa_, float wh_) {
 
     leader_transfer_cost = ltc;
     wa = wa_;

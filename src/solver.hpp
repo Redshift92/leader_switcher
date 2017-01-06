@@ -3,6 +3,8 @@
 #include <boost/graph/graph_traits.hpp>
 #include <boost/graph/adjacency_list.hpp>
 
+// #include <boost/interprocess/sync/named_mutex.hpp>
+
 
 #define get_int (int)python::extract<int>
 #define py python
@@ -63,7 +65,7 @@ std::vector< std::pair<state_t, state_t> > predecessor_successor;
 float wa, wh;
 float leader_transfer_cost;
 
-float goal_err_th = 10.0;
+float goal_err_th = 1.0;
 state_t satisfying_goal;
 
 float last_error = INF;
@@ -71,3 +73,6 @@ float last_error = INF;
 std::vector<std::vector<state_t> > already_expanded;
 
 long global_goal_cost;
+
+mutex glob_lock;
+mutex open_lock, g_lock;

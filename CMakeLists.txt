@@ -127,6 +127,7 @@ add_library(solver SHARED
 target_link_libraries(solver
   ${catkin_LIBRARIES}
   ${Boost_LIBRARIES}
+  -lboost_thread
 )
 # change output directory, so python can find the module and avoid the 'lib'-prefix
 set_target_properties(solver PROPERTIES

@@ -12,6 +12,9 @@
 
 #include <boost/heap/priority_queue.hpp>
 
+#include <boost/thread.hpp>
+#include <boost/interprocess/sync/named_mutex.hpp>
+
 #include "pretty_printer.hpp"
 #include "solver.hpp"
 
@@ -424,29 +427,87 @@ void update_succ(int i, state_t state, state_t parent, long cost, std::vector<st
     //std::cout << "update succ " << i << "\n";
     // should check for any inadmissible, but since i-th inadmissible contains only
     // states with i-th leader it's ok to check only for i-th inadmissible
+    // glob_lock.lock();
     if (!is_already_expanded(i, state)) {
+        g_lock.lock();
         std::pair<long,int> cost_pos = get_g_i_cost_pos(state, g->at(i));
+        g_lock.unlock();
         //std::cout << "not already_expanded: " << state << " current cost: " << cost_pos.first << " new cost: " << cost << "\n";
         if (cost_pos.first > cost) {
             // std::cout << "parent: " << parent << " with child: " << state << " and cost: " << cost << "\n";
 
+            glob_lock.lock();
             update_predecessor_successor(std::make_pair(parent, state));
+            glob_lock.unlock();
 
             state_cost_t new_state_cost = std::make_pair(state, cost);
+            g_lock.lock();
             if (cost_pos.second != -1) {
                 g->at(i)[cost_pos.second] = new_state_cost;
             }
             else {
                 g->at(i).push_back(new_state_cost);
             }
+            g_lock.unlock();
+
             new_state_cost.second = eval_key(i, state, g->at(i));
+
+            open_lock.lock();
             update_open(i, new_state_cost, open);
+            open_lock.unlock();
+
             if (satisfies_goal(state)) {
+                glob_lock.lock();
                 satisfying_goal = state;
                 global_goal_cost = cost;
+                glob_lock.unlock();
             }
         }
     }
+    // glob_lock.unlock();
+}
+
+void handle_successor(state_t successor, state_t parent, long parent_cost, int i, std::vector<state_queue_t>* open, std::vector<std::vector<state_cost_t> > *g) {
+    g_lock.lock();
+    long g_i_cost = get_g_i_cost(successor, g->at(i));
+    g_lock.unlock();
+    if (g_i_cost == -1) { // never seend by i-th queue
+        g_lock.lock();
+        g->at(i).push_back(std::make_pair(successor, INF));
+        g_lock.unlock();
+    }
+    long cost = parent_cost + edge_cost(parent, successor);
+    //std::cout << "edge cost: " << cost << "\n";
+
+    // std::cout << "got cost" << std::endl;
+    // glob_lock.lock();
+    update_succ(i, successor, parent, cost, g, open);
+    if (i != 0) {
+        update_succ(0, successor, parent, cost, g, open);
+    }
+    // glob_lock.unlock();
+    for (int j=1; j < leaders.size()+1; j++) {
+        // std::cout << "change leader" << std::endl;
+        if (j==i) continue;
+        state_cost_t transfered = transfer_func(j-1, successor);
+        g_lock.lock();
+        long transfered_seen = get_g_i_cost(transfered.first, g->at(j));
+        g_lock.unlock();
+        if (transfered_seen == -1) { // never seen by i-th queue
+            g_lock.lock();
+            g->at(j).push_back(std::make_pair(transfered.first, INF));
+            g_lock.unlock();
+        }
+        // long cost_j = get_g_i_cost(*succ_state, g->at(i)) + transfered.second;
+
+        // glob_lock.lock();
+        update_succ(j, transfered.first, parent, cost + transfered.second, g, open);
+        if (i != 0) {
+            update_succ(0, transfered.first, parent, cost + transfered.second, g, open);
+        }
+        // glob_lock.unlock();
+    }
+    // glob_lock.unlock();
 }
 
 void expand(int i, state_t state, std::vector<state_queue_t>* open, std::vector<std::vector<state_cost_t> > *g) {
@@ -460,30 +521,23 @@ void expand(int i, state_t state, std::vector<state_queue_t>* open, std::vector<
 
     long pred_cost = get_g_i_cost(state, g->at(i));
 
+    // std::vector<thread> successors_handlers;
+    thread_group successors_handlers;
+
     std::vector<state_t> succ = successors(i, state);
     std::vector<state_t>::iterator succ_state;
     for (succ_state = succ.begin(); succ_state != succ.end(); succ_state++) {
         //std::cout << "cycling successors\n";
-        if (get_g_i_cost(*succ_state, g->at(i)) == -1) { // never seend by i-th queue
-            g->at(i).push_back(std::make_pair(*succ_state, INF));
-        }
-        long cost = pred_cost + edge_cost(state, *succ_state);
-        //std::cout << "edge cost: " << cost << "\n";
-
-        update_succ(i, *succ_state, state, cost, g, open);
-        update_succ(0, *succ_state, state, cost, g, open);
-        for (int j=1; j < leaders.size()+1; j++) {
-            if (j==i) continue;
-            state_cost_t transfered = transfer_func(j-1, *succ_state);
-            if (get_g_i_cost(transfered.first, g->at(j)) == -1) { // never seend by i-th queue
-                g->at(j).push_back(std::make_pair(transfered.first, INF));
-            }
-            // long cost_j = get_g_i_cost(*succ_state, g->at(i)) + transfered.second;
-
-            update_succ(j, transfered.first, state, cost + transfered.second, g, open);
-            update_succ(0, transfered.first, state, cost + transfered.second, g, open);
-        }
+        // thread t(handle_successor, ref(*succ_state), ref(state), ref(pred_cost), ref(i), open, g);
+        // successors_handlers.add_thread(&t);
+        successors_handlers.create_thread(bind(handle_successor, ref(*succ_state), ref(state), ref(pred_cost), ref(i), open, g));
     }
+    successors_handlers.join_all();
+
+    // std::vector<thread>::iterator succ_it;
+    // for (succ_it = successors_handlers.begin(); succ_it != successors_handlers.end(); succ_it++) {
+    //     succ_it->join();
+    // }
 }
 
 

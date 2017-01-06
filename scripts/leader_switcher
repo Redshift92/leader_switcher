@@ -126,10 +126,12 @@ print('got states: ',len(states))
 
 players = { 'agents': None }
 
-while not rospy.is_shutdown() and len(states) != 0:
-    new_state = states.pop()
-    ldr = new_state[new_state[-1]]
-    new_state[new_state[-1]]= (ldr[0], ldr[1], {'rgb': [0,0,255]})
-    players['agents'] = new_state[0:-1]
-    pub.publish(json.dumps(players))
-    rate.sleep()
+while not rospy.is_shutdown():
+    for cur_state in reversed(states):
+        ldr = cur_state[cur_state[-1]]
+        cur_state[cur_state[-1]]= (ldr[0], ldr[1], {'rgb': [0,0,255]})
+        players['agents'] = cur_state[0:-1]
+        pub.publish(json.dumps(players))
+        rate.sleep()
+    if (raw_input('> run again? ').strip() != 'y'):
+        break

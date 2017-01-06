@@ -9,92 +9,34 @@
 #include <boost/graph/graph_traits.hpp>
 #include <boost/graph/adjacency_list.hpp>
 #include <boost/graph/dijkstra_shortest_paths.hpp>
-#include <boost/property_map/property_map.hpp>
 
 #include <boost/heap/priority_queue.hpp>
 
+#include "pretty_printer.hpp"
+#include "solver.hpp"
+
 using namespace boost;
-
-template <typename T>
-std::ostream& operator<< (std::ostream& out, const std::vector<T>& v) {
-  if ( !v.empty() ) {
-    out << '[';
-    std::copy (v.begin(), v.end(), std::ostream_iterator<T>(out, ", "));
-    out << "\b\b]";
-  }
-  return out;
-}
-
-template <typename T1, typename T2>
-std::ostream& operator<< (std::ostream& out,  const std::pair<T1, T2>& v) {
-    out << "(" << v.first << "," << v.second << ")";
-  return out;
-}
-
-#define get_int (int)python::extract<int>
-#define py python
-#define INF 10000000
-
-
-typedef std::pair<int, int> coord_t;
-typedef std::pair<int, int> Edge;
-
-// bundled property
-struct vertex_coord_t {
-    coord_t coord;
-    // long index;
-};
-
-typedef property<edge_weight_t, int> EdgeWeightProperty;
-
-typedef adjacency_list<listS, vecS, undirectedS, vertex_coord_t, EdgeWeightProperty> graph_t;
-
-typedef graph_traits<graph_t>::vertex_descriptor vertex_t;
-
-typedef std::vector<int> state_t;
-
-// std::vector<vertex_t> index_to_vertex;
-// long vertex_counter;
-graph_t slv_graph;
-state_t start_state, goal_state, leaders;
-std::vector<coord_t> formation_conf;
-
-static inline coord_t coord_diff(coord_t c1, coord_t c2) {
-    return std::make_pair(c1.first-c2.first, c1.second-c2.second);
-}
-
-static inline coord_t coord_sum(coord_t c1, coord_t c2) {
-    return std::make_pair(c1.first+c2.first, c1.second+c2.second);
-}
-
 
 void add_vertex_(vertex_t *v, std::vector<py::tuple> *a_n, py::tuple coord,
     std::vector<std::pair<py::tuple, int> >* start_pos, std::vector<std::pair<py::tuple, int> >* goal_pos) {
     *v = add_vertex(slv_graph);
-    // vertex_counter += 1;
     slv_graph[*v].coord = std::make_pair(get_int(coord[0]),get_int(coord[1]));
-    // slv_graph[*v].index = vertex_counter;
     (*a_n).push_back(coord);
-    // index_to_vertex.push_back(*v);
 
     int j, found = -1;
     for (j = 0; j < start_pos->size(); j++) {
         if ((*start_pos)[j].first == coord) {
             found = j;
-            //std::cout << "start: " << get_int(coord[0]) << " " << get_int(coord[1]) << " " << (*start_pos)[j].second << "\n";
             break;
         }
     }
     if (found != -1) {
-        // start_state[(*start_pos)[found].second] = vertex_counter;
         start_state[(*start_pos)[found].second] = num_vertices(slv_graph)-1;
         start_pos->erase(start_pos->begin() + found);
     }
     else {
         for (j = 0; j < goal_pos->size(); j++) {
             if ((*goal_pos)[j].first == coord) {
-                //std::cout << "goal: " << get_int(coord[0]) << " " << get_int(coord[1]) << " " << (*goal_pos)[j].second << "\n";
-                // goal_state[(*goal_pos)[j].second] = vertex_counter;
                 goal_state[(*goal_pos)[j].second] = num_vertices(slv_graph)-1;
                 goal_pos->erase(goal_pos->begin() + j);
                 break;
@@ -116,7 +58,6 @@ void init_graph(py::list free_space, py::list obs, py::list start_positions, py:
     coord_t nh_dirs[4] = { std::make_pair(0,1), std::make_pair(0,-1),
                         std::make_pair(1,0), std::make_pair(-1,0) };
 
-    // vertex_counter = 0;
     std::vector< std::pair<py::tuple, int> > start_pos, goal_pos;
     for (i = 0; i < py::len(start_positions); i++) {
         py::tuple xx = py::extract<py::tuple>(start_positions[i]);
@@ -134,8 +75,6 @@ void init_graph(py::list free_space, py::list obs, py::list start_positions, py:
         leaders.push_back(get_int(ldrs[i]));
     }
 
-    //std::cout << "free_space: " << py::len(free_space) << "\n";
-
     for (i = 0; i < py::len(free_space); i++) {
         py::tuple tuple_coord = py::extract<py::tuple>(free_space[i]);
         vertex_t u;
@@ -144,8 +83,6 @@ void init_graph(py::list free_space, py::list obs, py::list start_positions, py:
             add_vertex_(&u, &added_nodes, tuple_coord, &start_pos, &goal_pos);
         }
         else {
-            // u = index_to_vertex[std::distance(added_nodes.begin(), pos)];
-            // u = vertex(std::distance(added_nodes.begin(), pos), slv_graph);
             u = std::distance(added_nodes.begin(), pos);
         }
         for (j = 0; j < 4; j++) {
@@ -189,19 +126,7 @@ void init_graph(py::list free_space, py::list obs, py::list start_positions, py:
 
 }
 
-typedef std::pair<state_t, long> state_cost_t;
-
-// from least to most expensive
-struct state_cost_compare {
-    bool operator()(const state_cost_t &sc1, const state_cost_t &sc2) const {
-        return sc1.second > sc2.second;
-    }
-};
-
-typedef heap::priority_queue<state_cost_t, heap::compare<state_cost_compare> > state_queue_t;
-
-
-std::vector< std::pair<state_t, state_t> > predecessor_successor;
+/*************** MAIN ALGORITHM *******************************/
 
 void update_predecessor_successor(std::pair<state_t, state_t> ps) {
     //std::cout << "predecessor " << ps.first << " for " << ps.second << "\n";
@@ -367,8 +292,6 @@ long heuristic(int hidx, state_t state) {
     }
 }
 
-float wa, wh;
-
 long min_key(int i, std::vector<state_queue_t>* open) {
     return  ((state_cost_t) open->at(i).top()).second;
 }
@@ -418,8 +341,6 @@ std::pair<long, int> get_g_i_cost_pos(state_t state, std::vector<state_cost_t> g
     return std::make_pair(g_i_cost, pos);
 }
 
-float leader_transfer_cost;
-
 long edge_cost(state_t src, state_t dst) {
     long cost = 0;
     int i;
@@ -467,11 +388,6 @@ long edge_cost(state_t src, state_t dst) {
     return cost + 2*f_err;
 }
 
-float goal_err_th = 10.0;
-state_t satisfying_goal;
-
-float last_error = INF;
-
 bool satisfies_goal(state_t state) {
     float error = 0;
     //std::cout << state << " satisfying " << goal_state << "?\n";
@@ -500,13 +416,9 @@ state_cost_t transfer_func(int i, state_t state) {
     return std::make_pair(state, leader_transfer_cost);
 }
 
-std::vector<std::vector<state_t> > already_expanded;
-
 bool is_already_expanded(int i, state_t state) {
     return (std::find(already_expanded[i].begin(), already_expanded[i].end(), state) != already_expanded[i].end());
 }
-
-long global_goal_cost;
 
 void update_succ(int i, state_t state, state_t parent, long cost, std::vector<std::vector<state_cost_t> > *g, std::vector<state_queue_t>* open) {
     //std::cout << "update succ " << i << "\n";
@@ -619,20 +531,13 @@ void run(float ltc, float wa_, float wh_) {
         long keyq = min_key(q, &open);
         //std::cout << "key " << q << " " << keyq << "\n";
         if (keyq <= wa * key0) {
-            // if (!open[q].empty()) {
-                expand(q, get_top(q, &open), &open, &g);
-            // }
+            expand(q, get_top(q, &open), &open, &g);
         }
         else {
             expand(0, get_top(0, &open), &open, &g);
         }
-        // if (q==2) exit(1);
     }
 
-}
-
-py::tuple coord_to_tuple(coord_t c) {
-    return py::make_tuple(c.first, c.second);
 }
 
 py::list state_to_coord_list(state_t s) {
@@ -652,24 +557,15 @@ bool equal_except_leader(state_t s1, state_t s2) {
 }
 
 py::list get_states_sequence() {
-    for (int i=0; i < predecessor_successor.size(); i++) {
-        // std::cout << i << ": " << predecessor_successor[i] << "\n";
-    }
-
-    // int cnt = 0;
-
     py::list seq;
     state_t state = satisfying_goal;
-    // std::cout << "start_state: " << start_state << "\n";
     bool has_predecessor = true;
     while (has_predecessor) {
-        // std::cout << "appending: " << state << "\n";
         seq.append(state_to_coord_list(state));
         state = get_predecessor(state);
         if (equal_except_leader(state, start_state)) {
             has_predecessor = false;
         }
-        // cnt++;
     }
     return seq;
 }

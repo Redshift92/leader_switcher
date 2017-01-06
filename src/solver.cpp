@@ -399,10 +399,12 @@ bool satisfies_goal(state_t state) {
         coord_t crd_e = coord_diff(slv_graph[state[i]].coord, slv_graph[goal_state[i]].coord);
         error += sqrt(crd_e.first*crd_e.first + crd_e.second*crd_e.second);
     }
+    glob_lock.lock();
     if (error < last_error - 20) {
         std::cout << "error " << error << "\n";
         last_error = error;
     }
+    glob_lock.unlock();
     return (error < goal_err_th);
 }
 
@@ -467,6 +469,20 @@ void update_succ(int i, state_t state, state_t parent, long cost, std::vector<st
     // glob_lock.unlock();
 }
 
+void handle_chldrs(state_t successor, state_t parent, long succ_cost, int j, std::vector<state_queue_t>* open, std::vector<std::vector<state_cost_t> > *g) {
+    state_cost_t transfered = transfer_func(j-1, successor);
+    g_lock.lock();
+    long transfered_seen = get_g_i_cost(transfered.first, g->at(j));
+    g_lock.unlock();
+    if (transfered_seen == -1) { // never seen by i-th queue
+        g_lock.lock();
+        g->at(j).push_back(std::make_pair(transfered.first, INF));
+        g_lock.unlock();
+    }
+    update_succ(j, transfered.first, parent, succ_cost + transfered.second, g, open);
+    update_succ(0, transfered.first, parent, succ_cost + transfered.second, g, open);
+}
+
 void handle_successor(state_t successor, state_t parent, long parent_cost, int i, std::vector<state_queue_t>* open, std::vector<std::vector<state_cost_t> > *g) {
     g_lock.lock();
     long g_i_cost = get_g_i_cost(successor, g->at(i));
@@ -477,37 +493,16 @@ void handle_successor(state_t successor, state_t parent, long parent_cost, int i
         g_lock.unlock();
     }
     long cost = parent_cost + edge_cost(parent, successor);
-    //std::cout << "edge cost: " << cost << "\n";
-
-    // std::cout << "got cost" << std::endl;
-    // glob_lock.lock();
     update_succ(i, successor, parent, cost, g, open);
     if (i != 0) {
         update_succ(0, successor, parent, cost, g, open);
     }
-    // glob_lock.unlock();
+    thread_group chldrs_handlers;
     for (int j=1; j < leaders.size()+1; j++) {
-        // std::cout << "change leader" << std::endl;
         if (j==i) continue;
-        state_cost_t transfered = transfer_func(j-1, successor);
-        g_lock.lock();
-        long transfered_seen = get_g_i_cost(transfered.first, g->at(j));
-        g_lock.unlock();
-        if (transfered_seen == -1) { // never seen by i-th queue
-            g_lock.lock();
-            g->at(j).push_back(std::make_pair(transfered.first, INF));
-            g_lock.unlock();
-        }
-        // long cost_j = get_g_i_cost(*succ_state, g->at(i)) + transfered.second;
-
-        // glob_lock.lock();
-        update_succ(j, transfered.first, parent, cost + transfered.second, g, open);
-        if (i != 0) {
-            update_succ(0, transfered.first, parent, cost + transfered.second, g, open);
-        }
-        // glob_lock.unlock();
+        chldrs_handlers.create_thread(bind(handle_chldrs, ref(successor), ref(parent), ref(cost), j, open, g));
     }
-    // glob_lock.unlock();
+    chldrs_handlers.join_all();
 }
 
 void expand(int i, state_t state, std::vector<state_queue_t>* open, std::vector<std::vector<state_cost_t> > *g) {
@@ -527,10 +522,7 @@ void expand(int i, state_t state, std::vector<state_queue_t>* open, std::vector<
     std::vector<state_t> succ = successors(i, state);
     std::vector<state_t>::iterator succ_state;
     for (succ_state = succ.begin(); succ_state != succ.end(); succ_state++) {
-        //std::cout << "cycling successors\n";
-        // thread t(handle_successor, ref(*succ_state), ref(state), ref(pred_cost), ref(i), open, g);
-        // successors_handlers.add_thread(&t);
-        successors_handlers.create_thread(bind(handle_successor, ref(*succ_state), ref(state), ref(pred_cost), ref(i), open, g));
+        successors_handlers.create_thread(bind(handle_successor, ref(*succ_state), ref(state), ref(pred_cost), i, open, g));
     }
     successors_handlers.join_all();
 
@@ -565,6 +557,7 @@ void run(float ltc, float wa_, float wh_) {
         std::vector<state_cost_t> g_i;
         g_i.push_back(std::make_pair(state_i, 0));
         g.push_back(g_i);
+
         state_queue_t open_i;
         long key = eval_key(hidx, state_i, g_i);
         open_i.push(std::make_pair(state_i, key));

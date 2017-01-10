@@ -9,10 +9,13 @@
     <arg name="ltc" default="2"/>
     <!-- inadmissible heuristics weight -->
     <arg name="wa" default="2"/>
-    <!-- heuristic weight (almost agents num) -->
-    <arg name="wh" default="7"/>
+    <!-- heuristic weight -->
+    <arg name="wh" default="10"/>
+    <!-- formation error weight -->
+    <arg name="wf" default="2"/>
+
 
 	<node name="leader_switcher" pkg="leader_switcher" type="leader_switcher"
-          args="$(arg map) $(arg ltc) $(arg wa) $(arg wh)" output="screen"/>
+          args="$(arg map) $(arg ltc) $(arg wa) $(arg wh) $(arg wf)" output="screen"/>
 
 </launch>

@@ -20,28 +20,31 @@
 
 using namespace boost;
 
-void add_vertex_(vertex_t *v, std::vector<py::tuple> *a_n, py::tuple coord,
-    std::vector<std::pair<py::tuple, int> >* start_pos, std::vector<std::pair<py::tuple, int> >* goal_pos) {
-    *v = add_vertex(slv_graph);
-    slv_graph[*v].coord = std::make_pair(get_int(coord[0]),get_int(coord[1]));
-    (*a_n).push_back(coord);
+
+/************************* BUILD GRAPH GRID ****************************/
+
+void add_vertex_(vertex_t &v, std::vector<py::tuple> &a_n, py::tuple coord,
+    std::vector<std::pair<py::tuple, int> > &start_pos, std::vector<std::pair<py::tuple, int> > &goal_pos) {
+    v = add_vertex(slv_graph);
+    slv_graph[v].coord = std::make_pair(get_int(coord[0]),get_int(coord[1]));
+    a_n.push_back(coord);
 
     int j, found = -1;
-    for (j = 0; j < start_pos->size(); j++) {
-        if ((*start_pos)[j].first == coord) {
+    for (j = 0; j < start_pos.size(); j++) {
+        if (start_pos[j].first == coord) {
             found = j;
             break;
         }
     }
     if (found != -1) {
-        start_state[(*start_pos)[found].second] = num_vertices(slv_graph)-1;
-        start_pos->erase(start_pos->begin() + found);
+        start_state[start_pos[found].second] = num_vertices(slv_graph)-1;
+        start_pos.erase(start_pos.begin() + found);
     }
     else {
-        for (j = 0; j < goal_pos->size(); j++) {
-            if ((*goal_pos)[j].first == coord) {
-                goal_state[(*goal_pos)[j].second] = num_vertices(slv_graph)-1;
-                goal_pos->erase(goal_pos->begin() + j);
+        for (j = 0; j < goal_pos.size(); j++) {
+            if (goal_pos[j].first == coord) {
+                goal_state[goal_pos[j].second] = num_vertices(slv_graph)-1;
+                goal_pos.erase(goal_pos.begin() + j);
                 break;
             }
         }
@@ -83,7 +86,7 @@ void init_graph(py::list free_space, py::list obs, py::list start_positions, py:
         vertex_t u;
         std::vector<py::tuple>::iterator pos = std::find(added_nodes.begin(), added_nodes.end(), tuple_coord);
         if (pos == added_nodes.end()) {
-            add_vertex_(&u, &added_nodes, tuple_coord, &start_pos, &goal_pos);
+            add_vertex_(u, added_nodes, tuple_coord, start_pos, goal_pos);
         }
         else {
             u = std::distance(added_nodes.begin(), pos);
@@ -102,11 +105,9 @@ void init_graph(py::list free_space, py::list obs, py::list start_positions, py:
                     vertex_t q;
                     std::vector<py::tuple>::iterator pos = std::find(added_nodes.begin(), added_nodes.end(), neighbour);
                     if (pos == added_nodes.end()) {
-                        add_vertex_(&q, &added_nodes, neighbour, &start_pos, &goal_pos);
+                        add_vertex_(q, added_nodes, neighbour, start_pos, goal_pos);
                     }
                     else {
-                        // q = index_to_vertex[std::distance(added_nodes.begin(), pos)];
-                        // q = vertex(std::distance(added_nodes.begin(), pos), slv_graph);
                         q = std::distance(added_nodes.begin(), pos);
                     }
                     add_edge(u, q, 1, slv_graph);
@@ -120,19 +121,11 @@ void init_graph(py::list free_space, py::list obs, py::list start_positions, py:
         formation_conf.push_back(coord_diff(slv_graph[start_state[i]].coord, slv_graph[start_state[i-1]].coord));
     }
 
-    //std::cout << "Number of vertices: " << num_vertices(slv_graph) << "\n";
-    //std::cout << "Number of edges: " << num_edges(slv_graph) << "\n";
-
-    // for (j=0; j < start_state.size(); j++) {
-        //std::cout << j << ": " << start_state[j] << " " << goal_state[j] << "\n";
-    // }
-
 }
 
 /*************** MAIN ALGORITHM *******************************/
 
 void update_predecessor_successor(std::pair<state_t, state_t> ps) {
-    //std::cout << "predecessor " << ps.first << " for " << ps.second << "\n";
     bool updated = false;
     std::vector< std::pair<state_t, state_t> >::iterator ops;
     for (ops = predecessor_successor.begin(); ops != predecessor_successor.end(); ops++) {
@@ -159,14 +152,12 @@ state_t get_predecessor(state_t successor) {
     return predecessor;
 }
 
-std::vector<int> get_neighbours(int v, int pred) {
+std::vector<int> get_neighbours(int v) {
     std::vector<int> n;
     graph_traits<graph_t>::out_edge_iterator e, e_end;
     for (boost::tie(e, e_end) = out_edges(v, slv_graph); e != e_end; ++e) {
         vertex_t leader_new_vertex = target(*e, slv_graph);
-        if (leader_new_vertex != pred) { // avoid going back to previous leader position
-            n.push_back(leader_new_vertex);
-        }
+        n.push_back(leader_new_vertex);
     }
     return n;
 }
@@ -190,29 +181,37 @@ coord_t get_formation_diff(int u, int v) {
 }
 
 float get_succ_points(int successor, int leader_v, int successor_i, int leader_i) {
-    // //std::cout << "coord diff\n";
+    // difference between new leader and possible i-th successor positions
     coord_t ndiff = coord_diff(slv_graph[successor].coord, slv_graph[leader_v].coord);
-    // //std::cout << "formation diff\n";
+    // difference between leader and i-th agent positions
     coord_t fdiff = get_formation_diff(successor_i, leader_i);
-    // //std::cout << "coord diff\n";
     coord_t error = coord_diff(ndiff, fdiff);
-    //std::cout << "error: " << sqrt((error.first*error.first) + (error.second*error.second)) << "\n";
     return (1.0f / (sqrt((error.first*error.first) + (error.second*error.second))+0.001));
 }
 
-state_t policy_eval(int leader_new_vertex, state_t state) {
+
+bool no_state_inited_ = false;
+state_t ns;
+state_t no_state(int size) {
+    if (!no_state_inited_) {
+        for (int i=0; i < size; i++) {
+            ns.push_back(-1);
+        }
+        no_state_inited_ = true;
+    }
+    return ns;
+}
+
+state_t policy_eval(int leader_new_vertex, state_t state, state_t predecessor) {
     int leader_i = state.back();
-    //std::cout << "policy under leader " << leader_i << "\n";
     state[leader_i] = leader_new_vertex;
     for (int i=0; i < state.size()-1; i++) {
         if (i == leader_i) continue;
         // get all possible successors for a non leader agent
-        //std::cout << "possible successors for: " << state[i] << " " << slv_graph[state[i]].coord << "\n";
-        std::vector<int> possible_succ = get_neighbours(state[i], -1);
+        std::vector<int> possible_succ = get_neighbours(state[i]);
         int best_succ = -1;
         float best_succ_val;
         for (int j=0; j < possible_succ.size(); j++) {
-            //std::cout << "getting points for successor " << possible_succ[j] << " " << slv_graph[possible_succ[j]].coord << "\n";
             // more points for successors far from obstacles, keeping formation,
             // far from agents collision (just keeping formation at the moment)
             float succ_points = get_succ_points(possible_succ[j], leader_new_vertex, i, leader_i);
@@ -223,50 +222,46 @@ state_t policy_eval(int leader_new_vertex, state_t state) {
         }
         state[i] = possible_succ[best_succ];
     }
-    //std::cout << "got state " << state << " from policy\n";
-    // for (int j=0; j < state.size(); j++) {
-        //std::cout << slv_graph[state[j]].coord << "\n";
-    // }
+
+    if (state == predecessor) {
+        return no_state(state.size());
+    }
     return state;
 }
 
 void successors_fixed_leader(state_t state, std::vector<state_t> &succs) {
     int leader_i = state.back();
     int leader_vertex = state[leader_i];
-    //std::cout << "get neighbours for: " << slv_graph[leader_vertex].coord << "\n";
     state_t predecessor = get_predecessor(state);
-    int pred = ((predecessor.size() == 0) ? -1 : predecessor[leader_i]);
-    std::vector<int> leader_successors = get_neighbours(leader_vertex, pred);
+
+    std::vector<int> leader_successors = get_neighbours(leader_vertex);
     for (int j = 0; j < leader_successors.size(); j++) {
-        //std::cout << "getting successor from neighbour: " << leader_successors[j] << ": " << slv_graph[leader_successors[j]].coord << "\n";
-        succs.push_back(policy_eval(leader_successors[j], state));
+        state_t successor = policy_eval(leader_successors[j], state, predecessor);
+        if (successor != no_state(state.size())) {
+            succs.push_back(successor);
+        }
     }
 
 }
 
 std::vector<state_t> successors(int i, state_t state) {
+    // get *state* successors, if called from anchor search
+    // select all possible leaders, keep leader otherwise
     std::vector<state_t> succ;
     if (i != 0) {
-        //std::cout << "single fixed leader\n";
         successors_fixed_leader(state, succ);
     }
     else {
-        //std::cout << "all leaders\n";
         for (int j = 0; j < leaders.size(); j++) {
-            //std::cout << "new leader\n";
             state[state.size()-1] = leaders[j];
             successors_fixed_leader(state, succ);
         }
     }
-    //std::cout << "found successors: \n";
-    // for (int j=0; j < succ.size(); j++) {
-        //std::cout << succ[j] << "\n";
-    // }
     return succ;
 }
 
 
-long dijkstra_dist(int u, int v) {
+cost_t dijkstra_dist(int u, int v) {
     std::vector<vertex_t> p(num_vertices(slv_graph));
     std::vector<int> d(num_vertices(slv_graph));
     dijkstra_shortest_paths(slv_graph, u,
@@ -275,9 +270,9 @@ long dijkstra_dist(int u, int v) {
     return d[v];
 }
 
-long heuristic(int hidx, state_t state) {
+cost_t heuristic(int hidx, state_t state) {
     if (hidx == 0) {
-        std::vector<long> costs(state.size()-1);
+        std::vector<cost_t> costs(state.size()-1);
         for (int i=0; i < state.size()-1; i++) {
             costs[i] = dijkstra_dist(goal_state[i], state[i]);
         }
@@ -288,7 +283,7 @@ long heuristic(int hidx, state_t state) {
     }
 }
 
-long min_key(int i, std::vector<state_queue_t> &open) {
+cost_t min_key(int i, std::vector<state_queue_t> &open) {
     return  ((state_cost_t) open.at(i).top()).second;
 }
 
@@ -300,13 +295,8 @@ void update_open(int i, state_cost_t new_state_cost, std::vector<state_queue_t> 
     state_queue_t new_open_i;
     state_cost_t old_el;
 
-    // std::cout << "queue: " << i << "\n";
-
-    // std::cout << "placing " << slv_graph[(new_state_cost.first)[0]].coord << " in queue with cost: " << new_state_cost.second << "\n";
-
     while (!open.at(i).empty()) {
         old_el = open.at(i).top();
-        // std::cout << "already in queue " << slv_graph[(old_el.first)[0]].coord << " with cost: "<< old_el.second <<".\n";
         if (old_el.first != new_state_cost.first) {
             new_open_i.push(old_el);
         }
@@ -316,8 +306,8 @@ void update_open(int i, state_cost_t new_state_cost, std::vector<state_queue_t> 
     open.at(i) = new_open_i;
 }
 
-long get_g_i_cost(state_t state, std::vector<state_cost_t> g_i) {
-    long g_i_cost = -1;
+cost_t get_g_i_cost(state_t state, std::vector<state_cost_t> g_i) {
+    cost_t g_i_cost = -1;
     std::vector<state_cost_t>::iterator g_i_it;
     for (g_i_it = g_i.begin(); g_i_it != g_i.end(); g_i_it++) {
         if (g_i_it->first == state) g_i_cost = g_i_it->second;
@@ -325,8 +315,8 @@ long get_g_i_cost(state_t state, std::vector<state_cost_t> g_i) {
     return g_i_cost;
 }
 
-std::pair<long, int> get_g_i_cost_pos(state_t state, std::vector<state_cost_t> g_i) {
-    long g_i_cost = INF;
+std::pair<cost_t, int> get_g_i_cost_pos(state_t state, std::vector<state_cost_t> g_i) {
+    cost_t g_i_cost = INF;
     int pos = -1;
     for (std::vector<state_cost_t>::iterator g_i_it = g_i.begin() ; g_i_it != g_i.end(); g_i_it++) {
         if (g_i_it->first == state) {
@@ -337,8 +327,9 @@ std::pair<long, int> get_g_i_cost_pos(state_t state, std::vector<state_cost_t> g
     return std::make_pair(g_i_cost, pos);
 }
 
-long edge_cost(state_t src, state_t dst) {
-    long cost = 0;
+cost_t edge_cost(state_t src, state_t dst) {
+
+    cost_t cost = 0;
     int i;
 
     for (i = 0; i < src.size()-1; i++) {
@@ -348,47 +339,33 @@ long edge_cost(state_t src, state_t dst) {
         }
     }
 
+
     if (src.back() != dst.back()) {
-        cost += (((float)leader_transfer_cost / 100) * src.size());
+        // leader switch cost
+        cost += leader_transfer_cost;
     }
 
-    // std::vector<coord_t> dst_formation_conf;
-    // std::vector<coord_t> dst_formation_err;
+
+    // formation cost:
+    // formation error is taken as the euc. norm of the difference between
+    // current and starting relative configurations
+    // formation cost is obtained as formation error times formation weight wf
     coord_t dst_rel_coord, dst_f_err;
-    long f_err = 0;
+    cost_t f_err = 0;
 
     for (i = 1; i < dst.size()-1; i++) {
-        // dst_formation_conf.push_back(coord_diff(slv_graph[dst[i]].coord, slv_graph[dst[i-1]].coord));
         dst_rel_coord = coord_diff(slv_graph[dst[i]].coord, slv_graph[dst[i-1]].coord);
-        // dst_formation_err.push_back(coord_diff(dst_rel_coord, formation_conf[i-1]));
         dst_f_err = coord_diff(dst_rel_coord, formation_conf[i-1]);
         f_err += (dst_f_err.first*dst_f_err.first + dst_f_err.second*dst_f_err.second);
     }
-    f_err = (long) sqrt(f_err);
+    f_err = (cost_t) sqrt(f_err);
 
-    // std::cout << "f_err: " << f_err << "\n";
-    //
-    // if (f_err == 0) {
-    //     std::cout << "error zero for: \n";
-    //     for (i = 0; i < dst.size()-1; i++) {
-    //         std::cout << "state " << i << ": " << slv_graph[dst[i]].coord << " ref: " << slv_graph[start_state[i]].coord << "\n";
-    //         if (i>0) {
-    //             dst_rel_coord = coord_diff(slv_graph[dst[i]].coord, slv_graph[dst[i-1]].coord);
-    //             dst_f_err = coord_diff(dst_rel_coord, formation_conf[i-1]);
-    //             std::cout << "dst rel: " << dst_rel_coord;
-    //             std::cout << " f err: " << dst_f_err << "\n";
-    //         }
-    //     }
-    // }
-
-    return cost + 2*f_err;
+    return cost + wf*f_err;
 }
 
 bool satisfies_goal(state_t state) {
     float error = 0;
-    //std::cout << state << " satisfying " << goal_state << "?\n";
     for (int i=0; i < goal_state.size()-1; i++) {
-        //std::cout << slv_graph[state[i]].coord << " " << slv_graph[goal_state[i]].coord << "\n";
         coord_t crd_e = coord_diff(slv_graph[state[i]].coord, slv_graph[goal_state[i]].coord);
         error += sqrt(crd_e.first*crd_e.first + crd_e.second*crd_e.second);
     }
@@ -401,19 +378,15 @@ bool satisfies_goal(state_t state) {
     return (error < goal_err_th);
 }
 
-long eval_key(int hidx, state_t state, std::vector<std::vector<state_cost_t> > &g) {
+cost_t eval_key(int hidx, state_t state, std::vector<std::vector<state_cost_t> > &g) {
     g_lock.lock();
-    long g_i_cost = get_g_i_cost(state, g.at(hidx));
+    cost_t g_i_cost = get_g_i_cost(state, g.at(hidx));
     g_lock.unlock();
-    long new_cost = g_i_cost + wh*heuristic(hidx, state);
-    // long new_cost = wh*heuristic(hidx, state);
-    // std::cout << "key val: " << new_cost << "\n";
-    // return get_g_i_cost(state, g_i) + wh*heuristic(hidx, state);
-    return new_cost;
+    return g_i_cost + wh*heuristic(hidx, state);
 }
 
 state_cost_t transfer_func(int i, state_t state) {
-    state[state.size()-1] = i;
+    state[state.size()-1] = leaders[i];
     return std::make_pair(state, leader_transfer_cost);
 }
 
@@ -421,25 +394,15 @@ bool is_already_expanded(int i, state_t state) {
     return (std::find(already_expanded[i].begin(), already_expanded[i].end(), state) != already_expanded[i].end());
 }
 
-void update_succ(int i, state_t state, state_t parent, long cost, std::vector<std::vector<state_cost_t> > &g, std::vector<state_queue_t> &open) {
-    //std::cout << "update succ " << i << "\n";
+void update_succ(int i, state_t state, state_t parent, cost_t cost, std::vector<std::vector<state_cost_t> > &g, std::vector<state_queue_t> &open) {
     // should check for any inadmissible, but since i-th inadmissible contains only
     // states with i-th leader it's ok to check only for i-th inadmissible
-    // open_lock.lock();
-    // g_lock.lock();
-    // glob_lock.lock();
 
-
-    glob_lock.lock();
-    bool already_expanded = is_already_expanded(i, state);
-    glob_lock.unlock();
-    if (!already_expanded) {
+    if (!is_already_expanded(i, state)) {
         g_lock.lock();
-        std::pair<long,int> cost_pos = get_g_i_cost_pos(state, g.at(i));
+        std::pair<cost_t,int> cost_pos = get_g_i_cost_pos(state, g.at(i));
         g_lock.unlock();
-        //std::cout << "not already_expanded: " << state << " current cost: " << cost_pos.first << " new cost: " << cost << "\n";
         if (cost_pos.first > cost) {
-            // std::cout << "parent: " << parent << " with child: " << state << " and cost: " << cost << "\n";
 
             glob_lock.lock();
             update_predecessor_successor(std::make_pair(parent, state));
@@ -455,9 +418,7 @@ void update_succ(int i, state_t state, state_t parent, long cost, std::vector<st
             }
             g_lock.unlock();
 
-            // g_lock.lock();
             new_state_cost.second = eval_key(i, state, g);
-            // g_lock.unlock();
 
             open_lock.lock();
             update_open(i, new_state_cost, open);
@@ -465,21 +426,21 @@ void update_succ(int i, state_t state, state_t parent, long cost, std::vector<st
 
             if (satisfies_goal(state)) {
                 glob_lock.lock();
-                satisfying_goal = state;
-                global_goal_cost = cost;
+                if (cost < global_goal_cost) {
+                    satisfying_goal = state;
+                    global_goal_cost = cost;
+                }
                 glob_lock.unlock();
             }
         }
     }
-    // glob_lock.unlock();
-    // g_lock.unlock();
-    // open_lock.unlock();
 }
 
-void handle_chldrs(state_t successor, state_t parent, long succ_cost, int j, std::vector<state_queue_t> &open, std::vector<std::vector<state_cost_t> > &g) {
+void handle_chldrs(state_t successor, state_t parent, cost_t succ_cost, int j,
+        std::vector<state_queue_t> &open, std::vector<std::vector<state_cost_t> > &g) {
     state_cost_t transfered = transfer_func(j-1, successor);
     g_lock.lock();
-    long transfered_seen = get_g_i_cost(transfered.first, g.at(j));
+    cost_t transfered_seen = get_g_i_cost(transfered.first, g.at(j));
     g_lock.unlock();
     if (transfered_seen == -1) { // never seen by i-th queue
         g_lock.lock();
@@ -490,16 +451,17 @@ void handle_chldrs(state_t successor, state_t parent, long succ_cost, int j, std
     update_succ(0, transfered.first, parent, succ_cost + transfered.second, g, open);
 }
 
-void handle_successor(state_t successor, state_t parent, long parent_cost, int i, std::vector<state_queue_t> &open, std::vector<std::vector<state_cost_t> > &g) {
+void handle_successor(state_t successor, state_t parent, cost_t parent_cost, int i,
+        std::vector<state_queue_t> &open, std::vector<std::vector<state_cost_t> > &g) {
     g_lock.lock();
-    long g_i_cost = get_g_i_cost(successor, g.at(i));
+    cost_t g_i_cost = get_g_i_cost(successor, g.at(i));
     g_lock.unlock();
     if (g_i_cost == -1) { // never seend by i-th queue
         g_lock.lock();
         g.at(i).push_back(std::make_pair(successor, INF));
         g_lock.unlock();
     }
-    long cost = parent_cost + edge_cost(parent, successor);
+    cost_t cost = parent_cost + edge_cost(parent, successor);
     update_succ(i, successor, parent, cost, g, open);
     if (i != 0) {
         update_succ(0, successor, parent, cost, g, open);
@@ -507,44 +469,38 @@ void handle_successor(state_t successor, state_t parent, long parent_cost, int i
     thread_group chldrs_handlers;
     for (int j=1; j < leaders.size()+1; j++) {
         if (j==i) continue;
+        if (i==0 && successor.back() == leaders[j-1]) continue; // leader has to change
+        // allow parallel computation
         chldrs_handlers.create_thread(bind(handle_chldrs, successor, parent, cost, j, ref(open), ref(g)));
     }
     chldrs_handlers.join_all();
 }
 
 void expand(int i, state_t state, std::vector<state_queue_t>& open, std::vector<std::vector<state_cost_t> >& g) {
-    // std::cout << "expanding state " << slv_graph[state[0]].coord << " from list " << i << "\n";
-    // for (int j=0; j < state.size(); j++) {
-        //std::cout << state[j] << " " << slv_graph[state[j]].coord << "\n";
-    // }
     open.at(i).pop();
 
     already_expanded[i].push_back(state);
 
-    long pred_cost = get_g_i_cost(state, g.at(i));
+    cost_t pred_cost = get_g_i_cost(state, g.at(i));
 
-    // std::vector<thread> successors_handlers;
     thread_group successors_handlers;
 
     std::vector<state_t> succ = successors(i, state);
     std::vector<state_t>::iterator succ_state;
     for (succ_state = succ.begin(); succ_state != succ.end(); succ_state++) {
+        // allow parallel computation
         successors_handlers.create_thread(bind(handle_successor, *succ_state, state, pred_cost, i, ref(open), ref(g)));
     }
     successors_handlers.join_all();
-
-    // std::vector<thread>::iterator succ_it;
-    // for (succ_it = successors_handlers.begin(); succ_it != successors_handlers.end(); succ_it++) {
-    //     succ_it->join();
-    // }
 }
 
 
-void run(float ltc, float wa_, float wh_) {
+void run(float ltc, float wa_, float wh_, float wf_) {
 
     leader_transfer_cost = ltc;
     wa = wa_;
     wh = wh_;
+    wf = wf_;
 
     std::vector<state_queue_t> open;
     std::vector< std::vector<state_cost_t> > g;
@@ -559,6 +515,7 @@ void run(float ltc, float wa_, float wh_) {
             state_i[state_i.size()-1] = leaders[0];
         }
         else {
+            std::cout << "possible leader: " << leaders[hidx-1] << "\n";
             state_i[state_i.size()-1] = leaders[hidx-1];
         }
         std::vector<state_cost_t> g_i;
@@ -566,9 +523,8 @@ void run(float ltc, float wa_, float wh_) {
         g.push_back(g_i);
 
         state_queue_t open_i;
-        long key = eval_key(hidx, state_i, g);
+        cost_t key = eval_key(hidx, state_i, g);
         open_i.push(std::make_pair(state_i, key));
-        //std::cout << "adding to list " << hidx << " with key: " << key << "\n";
         open.push_back(open_i);
 
         std::vector<state_t> already_expanded_i;
@@ -578,12 +534,9 @@ void run(float ltc, float wa_, float wh_) {
     int q = 0;
 
     while (global_goal_cost > wa * min_key(0, open)) {
-        // std::cout << "min key: " << wa * min_key(0, &open) << " global_goal_cost:" << global_goal_cost << "\n";
-        //std::cout << "main cycle\n";
         q = (q % leaders.size()) + 1;
-        long key0 = min_key(0, open);
-        long keyq = min_key(q, open);
-        //std::cout << "key " << q << " " << keyq << "\n";
+        cost_t key0 = min_key(0, open);
+        cost_t keyq = min_key(q, open);
         if (keyq <= wa * key0) {
             expand(q, get_top(q, open), open, g);
         }
@@ -593,6 +546,8 @@ void run(float ltc, float wa_, float wh_) {
     }
 
 }
+
+/**************** CONVERT SOLVER RESULT TO PYTHON STRUCTURES ************/
 
 py::list state_to_coord_list(state_t s) {
     py::list coord_list;
@@ -621,6 +576,7 @@ py::list get_states_sequence() {
             has_predecessor = false;
         }
     }
+    seq.append(global_goal_cost);
     return seq;
 }
 

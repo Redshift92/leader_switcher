@@ -6,9 +6,8 @@ import os
 import json
 import sys
 from PIL import Image
-from time import sleep
+from time import sleep, time
 
-# from leader_switcher import solver
 import leader_switcher.solver as solver
 
 from std_msgs.msg import String
@@ -116,15 +115,21 @@ for edge in edges:
     players['edges'][0][1].append(edge[1][1])
 pub.publish(json.dumps(players))
 
-solver_params = [ float(param) for param in sys.argv[2:5] ]
+solver_params = [ float(param) for param in sys.argv[2:6] ]
 print(solver_params)
 
+solver_start_time = time()
 solver.run(*solver_params)
+exe_time = time() - solver_start_time
 print('run done')
 states = solver.get_states_sequence()
 print('got states: ',len(states))
+print('solution cost: ', states.pop())
+print('execution time: ', exe_time)
 
 players = { 'agents': None }
+
+print('last state: ', states[0])
 
 while not rospy.is_shutdown():
     for cur_state in reversed(states):

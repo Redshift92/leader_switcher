@@ -3,9 +3,6 @@
 #include <boost/graph/graph_traits.hpp>
 #include <boost/graph/adjacency_list.hpp>
 
-// #include <boost/interprocess/sync/named_mutex.hpp>
-
-
 #define get_int (int)python::extract<int>
 #define py python
 #define INF 10000000
@@ -47,10 +44,12 @@ static inline py::tuple coord_to_tuple(coord_t c) {
 
 /*********** main algorithm structures and variables **********/
 
+typedef float cost_t;
+
 state_t start_state, goal_state, leaders;
 std::vector<coord_t> formation_conf;
 
-typedef std::pair<state_t, long> state_cost_t;
+typedef std::pair<state_t, cost_t> state_cost_t;
 
 // order queue from least to most expensive
 struct state_cost_compare {
@@ -62,7 +61,7 @@ struct state_cost_compare {
 typedef heap::priority_queue<state_cost_t, heap::compare<state_cost_compare> > state_queue_t;
 
 std::vector< std::pair<state_t, state_t> > predecessor_successor;
-float wa, wh;
+float wa, wh, wf;
 float leader_transfer_cost;
 
 float goal_err_th = 1.0;
@@ -72,7 +71,7 @@ float last_error = INF;
 
 std::vector<std::vector<state_t> > already_expanded;
 
-long global_goal_cost;
+cost_t global_goal_cost;
 
 mutex glob_lock;
 mutex open_lock, g_lock;

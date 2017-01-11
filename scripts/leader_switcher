@@ -120,8 +120,8 @@ solver_params = [ float(param) for param in sys.argv[2:6] ]
 hashed_sp = str(hash(tuple([sys.argv[1]] + solver_params)))
 print(solver_params)
 
-cached_params = sys.argv[-1]
-cached, states = None, None
+cached_params = sys.argv[6]
+cached, states, expanded = None, None, None
 if 'y' in cached_params or 's' in cached_params:
     with open(cached_path) as rr:
         cached = json.loads(rr.read())
@@ -129,15 +129,19 @@ if 'y' in cached_params or 's' in cached_params:
         print("found in cache!")
         states = cached[hashed_sp]
 
+players = { 'agents': None }
 if states is None:
     solver_start_time = time()
     solver.run(*solver_params)
     exe_time = time() - solver_start_time
 
     states = solver.get_states_sequence()
+    expanded = solver.get_expanded()
+
     print('execution time: ', exe_time)
 
 if 's' in cached_params:
+    print('cached_params: ', cached_params, ' saving')
     if cached is not None:
         cached[hashed_sp] = states
         with open(cached_path,'w+') as ww:
@@ -146,8 +150,6 @@ if 's' in cached_params:
 print('got states: ',len(states))
 print('solution cost: ', states.pop())
 
-players = { 'agents': None }
-
 print('last state: ', states[0])
 
 while not rospy.is_shutdown():
@@ -155,6 +157,13 @@ while not rospy.is_shutdown():
         ldr = cur_state[cur_state[-1]]
         cur_state[cur_state[-1]]= (ldr[0], ldr[1], {'rgb': [0,0,255]})
         players['agents'] = cur_state[0:-1]
+        # players['agents'] = []
+        # print(players['agents'])
+        # for exp in expanded:
+        #     players['agents'].extend([ list(xx) + [{'rgb': [255,255,255]}] for xx in exp[:-1]])
+        # print(players['agents'])
+
+
         pub.publish(json.dumps(players))
         rate.sleep()
     if (raw_input('> run again? ').strip() != 'y'):

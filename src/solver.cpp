@@ -588,6 +588,16 @@ py::list get_states_sequence() {
     return seq;
 }
 
+py::list get_expanded() {
+    py::list seq;
+    for (int i=0; i<already_expanded.size(); i++) {
+        for (int j=0; j<already_expanded[i].size(); j++) {
+            seq.append(state_to_coord_list(already_expanded[i][j]));
+        }
+    }
+    return seq;
+}
+
 py::list get_graph_edges() {
     py::list res;
     graph_traits < graph_t >::edge_iterator ei, ei_end;
@@ -607,5 +617,6 @@ BOOST_PYTHON_MODULE(solver) {
    py::def("init_graph", init_graph);
    py::def("run", run);
    py::def("get_states_sequence", get_states_sequence);
+   py::def("get_expanded", get_expanded);
    py::def("get_graph_edges", get_graph_edges);
 }

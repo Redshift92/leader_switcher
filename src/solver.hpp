@@ -1,3 +1,6 @@
+#ifndef SOLVERH
+#define SOLVERH
+
 #include <boost/config.hpp>
 #include <boost/python.hpp>
 #include <boost/graph/graph_traits.hpp>
@@ -54,7 +57,18 @@ typedef std::pair<state_t, cost_t> state_cost_t;
 // order queue from least to most expensive
 struct state_cost_compare {
     bool operator()(const state_cost_t &sc1, const state_cost_t &sc2) const {
-        return sc1.second > sc2.second;
+        // return sc1.second > sc2.second;
+        if (sc1.second != sc2.second) {
+            return sc1.second > sc2.second;
+        }
+        else {
+            for (int i=0; i < sc1.first.size(); i++) {
+                if (sc1.first[i] != sc2.first[i]) {
+                    return sc1.first[i] > sc2.first[i];
+                }
+            }
+            return sc1.first.back() > sc2.first.back();
+        }
     }
 };
 
@@ -67,7 +81,7 @@ float leader_transfer_cost;
 float goal_err_th = 1.0;
 state_t satisfying_goal;
 
-float last_error = INF;
+float last_error;
 
 std::vector<std::vector<state_t> > already_expanded;
 
@@ -75,3 +89,5 @@ cost_t global_goal_cost;
 
 mutex glob_lock;
 mutex open_lock, g_lock;
+
+#endif

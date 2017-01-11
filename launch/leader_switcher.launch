@@ -14,8 +14,9 @@
     <!-- formation error weight -->
     <arg name="wf" default="2"/>
 
+    <arg name="cache" default="ys"/>
 
 	<node name="leader_switcher" pkg="leader_switcher" type="leader_switcher"
-          args="$(arg map) $(arg ltc) $(arg wa) $(arg wh) $(arg wf)" output="screen"/>
+          args="$(arg map) $(arg ltc) $(arg wa) $(arg wh) $(arg wf) $(arg cache)" output="screen"/>
 
 </launch>

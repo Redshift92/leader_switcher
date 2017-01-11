@@ -13,7 +13,6 @@
 #include <boost/heap/priority_queue.hpp>
 
 #include <boost/thread.hpp>
-#include <boost/interprocess/sync/named_mutex.hpp>
 
 #include "pretty_printer.hpp"
 #include "solver.hpp"
@@ -292,6 +291,8 @@ state_t get_top(int i, std::vector<state_queue_t> &open) {
 }
 
 void update_open(int i, state_cost_t new_state_cost, std::vector<state_queue_t> &open) {
+    // std::cout << "inserting " << state_to_str_coord_vctor(new_state_cost.first) << "in open " << i << " with cost " << new_state_cost.second << "\n";
+
     state_queue_t new_open_i;
     state_cost_t old_el;
 
@@ -477,6 +478,7 @@ void handle_successor(state_t successor, state_t parent, cost_t parent_cost, int
 }
 
 void expand(int i, state_t state, std::vector<state_queue_t>& open, std::vector<std::vector<state_cost_t> >& g) {
+    // std::cout << "expanding: " << state_to_str_coord_vctor(state) << " from search " << i << "\n";
     open.at(i).pop();
 
     already_expanded[i].push_back(state);
@@ -502,10 +504,16 @@ void run(float ltc, float wa_, float wh_, float wf_) {
     wh = wh_;
     wf = wf_;
 
+    std::cout << "---------\n";
+
     std::vector<state_queue_t> open;
     std::vector< std::vector<state_cost_t> > g;
 
     global_goal_cost = INF;
+    last_error = INF;
+
+    predecessor_successor.clear();
+    already_expanded.clear();
 
     // insert start state into all heaps with key(start, i) as priority
     for (int hidx = 0; hidx < leaders.size()+1; hidx++) {
@@ -515,7 +523,7 @@ void run(float ltc, float wa_, float wh_, float wf_) {
             state_i[state_i.size()-1] = leaders[0];
         }
         else {
-            std::cout << "possible leader: " << leaders[hidx-1] << "\n";
+            // std::cout << "possible leader: " << leaders[hidx-1] << "\n";
             state_i[state_i.size()-1] = leaders[hidx-1];
         }
         std::vector<state_cost_t> g_i;

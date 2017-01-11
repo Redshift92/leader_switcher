@@ -17,6 +17,7 @@ map_file = 'map_' + sys.argv[1] + '.png'
 rospy.init_node('leader_switcher', anonymous=True)
 pub = rospy.Publisher('plan2rviz_notifier', String, queue_size=10)
 map_path = os.path.join(rospkg.RosPack().get_path('leader_switcher'), 'maps', map_file)
+cached_path = os.path.join(rospkg.RosPack().get_path('leader_switcher'), 'cached.json')
 map_i = Image.open(map_path)
 rate = rospy.Rate(4)
 
@@ -116,16 +117,34 @@ for edge in edges:
 pub.publish(json.dumps(players))
 
 solver_params = [ float(param) for param in sys.argv[2:6] ]
+hashed_sp = str(hash(tuple([sys.argv[1]] + solver_params)))
 print(solver_params)
 
-solver_start_time = time()
-solver.run(*solver_params)
-exe_time = time() - solver_start_time
-print('run done')
-states = solver.get_states_sequence()
+cached_params = sys.argv[-1]
+cached, states = None, None
+if 'y' in cached_params or 's' in cached_params:
+    with open(cached_path) as rr:
+        cached = json.loads(rr.read())
+    if hashed_sp in cached:
+        print("found in cache!")
+        states = cached[hashed_sp]
+
+if states is None:
+    solver_start_time = time()
+    solver.run(*solver_params)
+    exe_time = time() - solver_start_time
+
+    states = solver.get_states_sequence()
+    print('execution time: ', exe_time)
+
+if 's' in cached_params:
+    if cached is not None:
+        cached[hashed_sp] = states
+        with open(cached_path,'w+') as ww:
+            ww.write(json.dumps(cached))
+
 print('got states: ',len(states))
 print('solution cost: ', states.pop())
-print('execution time: ', exe_time)
 
 players = { 'agents': None }
 

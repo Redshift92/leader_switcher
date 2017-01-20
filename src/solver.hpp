@@ -1,3 +1,14 @@
+// Copyright 2017 Lorenzo Rizzello
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+// OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+// NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+// HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+// WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+// OTHER DEALINGS IN THE SOFTWARE.
+
 #ifndef SOLVERH
 #define SOLVERH
 
@@ -57,7 +68,6 @@ typedef std::pair<state_t, cost_t> state_cost_t;
 // order queue from least to most expensive
 struct state_cost_compare {
     bool operator()(const state_cost_t &sc1, const state_cost_t &sc2) const {
-        // return sc1.second > sc2.second;
         if (sc1.second != sc2.second) {
             return sc1.second > sc2.second;
         }
